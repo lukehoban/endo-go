@@ -5,7 +5,10 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"runtime/pprof"
 )
+
+var log = false
 
 type DNA string
 
@@ -105,20 +108,30 @@ func do(prefix string) error {
 	iteration := 0
 	for {
 
-		fmt.Printf("\niteration %d\n", iteration)
-		fmt.Printf("dna = %s\n", dna)
+		if log {
+			fmt.Printf("\niteration %d\n", iteration)
+			fmt.Printf("dna = %s\n", dna)
+		} else if iteration%1000 == 0 {
+			fmt.Printf("iteration %d\n", iteration)
+		} else if iteration > 2000 {
+			panic("done")
+		}
 
 		pat, err := pattern()
 		if err != nil {
 			return err
 		}
-		fmt.Printf("pat = %s\n", pat)
+		if log {
+			fmt.Printf("pat = %s\n", pat)
+		}
 
 		tmpl, err := template()
 		if err != nil {
 			return err
 		}
-		fmt.Printf("tmpl = %s\n", tmpl)
+		if log {
+			fmt.Printf("tmpl = %s\n", tmpl)
+		}
 
 		matchreplace(pat, tmpl)
 		iteration++
@@ -411,6 +424,16 @@ func quote(d DNA) DNA {
 }
 
 func main() {
+
+	if true {
+		f, err := os.Create("out.prof")
+		if err != nil {
+			panic(err)
+		}
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
 	prefix := ""
 	if len(os.Args) >= 2 {
 		prefix = os.Args[1]
