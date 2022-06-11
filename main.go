@@ -3,13 +3,14 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"reflect"
 )
 
 type DNA string
 
 func (d DNA) get(i int) byte {
-	if i > len(d) {
+	if i >= len(d) {
 		return 0
 	}
 	return d[i]
@@ -93,12 +94,13 @@ func (tmpl Template) String() string {
 	return ret
 }
 
-func do() error {
+func do(prefix string) error {
 	byts, err := ioutil.ReadFile("./endo.dna")
 	if err != nil {
 		return err
 	}
-	dna = DNA(byts)
+
+	dna = DNA(prefix).append(DNA(byts))
 
 	iteration := 0
 	for {
@@ -121,8 +123,6 @@ func do() error {
 		matchreplace(pat, tmpl)
 		iteration++
 	}
-
-	return nil
 }
 
 func pattern() (Pattern, error) {
@@ -348,9 +348,15 @@ func replace(tmpl Template, e []DNA) {
 		case int32:
 			r = r.append(DNA(string(v)))
 		case int:
-			r = r.append(asnat(len(e[v])))
+			x := 0
+			if v < len(e) {
+				x = len(e[v])
+			}
+			r = r.append(asnat(x))
 		case []int:
-			r = r.append(protect(v[1], e[v[0]]))
+			if v[0] < len(e) {
+				r = r.append(protect(v[1], e[v[0]]))
+			}
 		default:
 			panic(fmt.Sprintf("unexpected template element: %v", reflect.TypeOf(t)))
 		}
@@ -405,9 +411,13 @@ func quote(d DNA) DNA {
 }
 
 func main() {
-	err := do()
+	prefix := ""
+	if len(os.Args) >= 2 {
+		prefix = os.Args[1]
+	}
+	err := do(prefix)
 	if err != nil {
-		fmt.Printf("rna = %v\n", rna)
-		panic(err)
+		fmt.Printf("#rna = %d\n", len(rna))
+		fmt.Printf("%v\n", err)
 	}
 }
