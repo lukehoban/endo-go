@@ -19,6 +19,9 @@ type DNA struct {
 }
 
 func dnaFromString(s string) *DNA {
+	if s == "" {
+		return emptyDNA()
+	}
 	return &DNA{
 		s:     s,
 		len:   len(s),
@@ -64,6 +67,8 @@ func (d *DNA) skip(i int) *DNA {
 	}
 }
 
+const SMALL = 50
+
 func (d1 *DNA) append(d2 *DNA) *DNA {
 	if d1.Len() == 0 {
 		return d2
@@ -71,14 +76,14 @@ func (d1 *DNA) append(d2 *DNA) *DNA {
 	if d2.Len() == 0 {
 		return d1
 	}
-	if d1.Len() < 100 && d2.left != nil && d2.left.left == nil && len(d2.left.s) < 100 {
+	if d1.Len() < SMALL && d2.left != nil && d2.left.left == nil && len(d2.left.s) < SMALL {
 		return &DNA{
 			len:   d1.len + d2.len,
 			left:  dnaFromString(d1.asString() + d2.left.s),
 			right: d2.right,
 		}
 	}
-	if d2.Len() < 100 && d1.right != nil && d1.right.right == nil && len(d1.right.s) < 100 {
+	if d2.Len() < SMALL && d1.right != nil && d1.right.right == nil && len(d1.right.s) < SMALL {
 		return &DNA{
 			len:   d1.len + d2.len,
 			left:  d1.left,
@@ -113,8 +118,10 @@ func (d *DNA) keep(n int) *DNA {
 	}
 }
 
+var empty = DNA{}
+
 func emptyDNA() *DNA {
-	return &DNA{"", 0, nil, nil}
+	return &empty
 }
 
 func (d *DNA) Len() int {
@@ -164,15 +171,20 @@ func (iter *DNAIterator) next() byte {
 	if len(iter.stack) == 0 {
 		return 0
 	}
-	cur := iter.stack[0]
-	ret := cur.get(iter.i)
+	lastStackIndex := len(iter.stack) - 1
+	cur := iter.stack[lastStackIndex]
+	if iter.i >= len(cur.s) {
+		return 0
+	}
+	ret := cur.s[iter.i]
 	iter.i++
 	if iter.i == cur.Len() {
 		iter.i = 0
-		iter.stack = iter.stack[1:]
-		if len(iter.stack) > 0 && iter.stack[0].left != nil {
-			newstack := dnaToStack(iter.stack[0])
-			iter.stack = append(newstack, iter.stack[1:]...)
+		iter.stack = iter.stack[:lastStackIndex]
+		lastStackIndex--
+		if len(iter.stack) > 0 && iter.stack[lastStackIndex].left != nil {
+			newstack := dnaToStack(iter.stack[lastStackIndex])
+			iter.stack = append(iter.stack[:lastStackIndex], newstack...)
 		}
 	}
 	return ret
@@ -189,8 +201,8 @@ func (iter *DNAIterator) Rest() *DNA {
 	if len(iter.stack) == 0 {
 		return ret
 	}
-	ret = ret.append(iter.stack[0].skip(iter.i))
-	for i := 1; i < len(iter.stack); i++ {
+	ret = ret.append(iter.stack[len(iter.stack)-1].skip(iter.i))
+	for i := len(iter.stack) - 2; i >= 0; i-- {
 		ret = &DNA{
 			s:     "",
 			len:   ret.len + iter.stack[i].len,
@@ -202,17 +214,17 @@ func (iter *DNAIterator) Rest() *DNA {
 }
 
 func dnaToStack(d *DNA) []*DNA {
-	var stack []*DNA
+	// var stack []*DNA
+	stack := make([]*DNA, 0, 10)
 	for d.right != nil {
-		stack = append([]*DNA{d.right}, stack...)
+		stack = append(stack, d.right)
 		d = d.left
 	}
-	stack = append([]*DNA{d}, stack...)
+	stack = append(stack, d)
 	return stack
 }
 
 func (d *DNA) iterator() *DNAIterator {
-
 	return &DNAIterator{
 		stack: dnaToStack(d),
 		i:     0,
