@@ -10,45 +10,134 @@ import (
 
 var log = false
 
-type DNA string
+type DNA struct {
+	s     string
+	len   int
+	left  *DNA
+	right *DNA
+}
 
-func (d DNA) get(i int) byte {
-	if i >= len(d) {
+func dnaFromString(s string) *DNA {
+	return &DNA{
+		s:     s,
+		len:   len(s),
+		left:  nil,
+		right: nil,
+	}
+}
+
+func (d *DNA) get(i int) byte {
+	if i >= d.len {
 		return 0
 	}
-	return d[i]
-}
-
-func (d DNA) skip(i int) DNA {
-	return d[i:]
-}
-
-func (d DNA) append(d2 DNA) DNA {
-	return d + d2
-}
-
-func emptyDNA() DNA {
-	return DNA("")
-}
-
-func (d DNA) substring(i int, end int) DNA {
-	if end > len(d) {
-		end = len(d)
+	if d.left == nil {
+		return d.s[i]
+	} else {
+		if i < d.left.len {
+			return d.left.get(i)
+		} else {
+			return d.right.get(i - d.left.len)
+		}
 	}
-	return d[i:end]
 }
 
-func (d DNA) String() string {
+func (d *DNA) skip(i int) *DNA {
+	if i == 0 {
+		return d
+	}
+	if d.left == nil {
+		return dnaFromString(d.s[i:])
+	} else {
+		if i < d.left.len {
+			return &DNA{
+				s:     "",
+				len:   d.len - i,
+				left:  d.left.skip(i),
+				right: d.right,
+			}
+		} else {
+			return d.right.skip(i - d.left.len)
+		}
+	}
+}
+
+func (d1 *DNA) append(d2 *DNA) *DNA {
+	if d1.Len() < 100 && d2.left != nil && d2.left.left == nil && len(d2.left.s) < 100 {
+		return &DNA{
+			len:   d1.len + d2.len,
+			left:  dnaFromString(d1.asString() + d2.left.s),
+			right: d2.right,
+		}
+	}
+	if d2.Len() < 100 && d1.right != nil && d1.right.right == nil && len(d1.right.s) < 100 {
+		return &DNA{
+			len:   d1.len + d2.len,
+			left:  d1.left,
+			right: dnaFromString(d1.right.s + d2.asString()),
+		}
+	}
+	return &DNA{
+		s:     "",
+		len:   d1.len + d2.len,
+		left:  d1,
+		right: d2,
+	}
+}
+
+func (d *DNA) keep(n int) *DNA {
+	if n == d.Len() {
+		return d
+	}
+	if d.left == nil {
+		return dnaFromString(d.s[0:n])
+	} else {
+		if n > d.left.len {
+			return &DNA{
+				s:     "",
+				len:   n,
+				left:  d.left,
+				right: d.right.keep(n - d.left.len),
+			}
+		} else {
+			return d.left.keep(n)
+		}
+	}
+}
+
+func emptyDNA() *DNA {
+	return &DNA{"", 0, nil, nil}
+}
+
+func (d *DNA) Len() int {
+	return d.len
+}
+
+func (d *DNA) substring(i int, end int) *DNA {
+	if end > d.Len() {
+		end = d.Len()
+	}
+	return d.skip(i).keep(end - i)
+}
+
+func (d *DNA) asString() string {
+	if d.left == nil {
+		return d.s
+	} else {
+		return d.left.asString() + d.right.asString()
+	}
+}
+
+func (d *DNA) String() string {
 	snip := d.substring(0, 10)
 	cont := ""
-	if len(d) > 10 {
+	if d.Len() > 10 {
 		cont = "..."
 	}
-	return fmt.Sprintf("%s%s (%d bases)", string(snip), cont, len(d))
+	return fmt.Sprintf("%s%s (%d bases)", snip.asString(), cont, d.Len())
 }
 
-var dna DNA
-var rna []DNA
+var dna *DNA
+var rna []*DNA
 
 type Pattern []interface{}
 type Template []interface{}
@@ -103,7 +192,7 @@ func do(prefix string) error {
 		return err
 	}
 
-	dna = DNA(prefix).append(DNA(byts))
+	dna = dnaFromString(prefix).append(dnaFromString(string(byts)))
 
 	iteration := 0
 	for {
@@ -111,9 +200,9 @@ func do(prefix string) error {
 		if log {
 			fmt.Printf("\niteration %d\n", iteration)
 			fmt.Printf("dna = %s\n", dna)
-		} else if iteration%1000 == 0 {
+		} else if iteration%10000 == 0 {
 			fmt.Printf("iteration %d\n", iteration)
-		} else if iteration > 2000 {
+		} else if iteration > 10000000 {
 			panic("done")
 		}
 
@@ -300,7 +389,7 @@ func template() (Template, error) {
 
 func matchreplace(pat Pattern, tmpl Template) {
 	i := 0
-	var e []DNA
+	var e []*DNA
 	var c []int
 
 	for _, p := range pat {
@@ -313,7 +402,7 @@ func matchreplace(pat Pattern, tmpl Template) {
 			}
 		case int:
 			i += v
-			if i > len(dna) {
+			if i > dna.Len() {
 				return
 			}
 		case string:
@@ -341,9 +430,9 @@ func matchreplace(pat Pattern, tmpl Template) {
 // DNA = ICFICFICPF
 // needle = ICP
 // ret = 8
-func findPostfix(d DNA, needle string) int {
+func findPostfix(d *DNA, needle string) int {
 outer:
-	for i := 0; i <= len(d)-len(needle); i++ {
+	for i := 0; i <= d.Len()-len(needle); i++ {
 		for j := 0; j < len(needle); j++ {
 			if d.get(i+j) != needle[j] {
 				continue outer
@@ -354,18 +443,18 @@ outer:
 	return -1
 }
 
-func replace(tmpl Template, e []DNA) {
+func replace(tmpl Template, e []*DNA) {
 	r := emptyDNA()
 	for _, t := range tmpl {
 		switch v := t.(type) {
 		case int32:
-			r = r.append(DNA(string(v)))
+			r = r.append(dnaFromString(string(v)))
 		case int:
 			x := 0
 			if v < len(e) {
-				x = len(e[v])
+				x = e[v].Len()
 			}
-			r = r.append(asnat(x))
+			r = r.append(dnaFromString(asnat(x)))
 		case []int:
 			if v[0] < len(e) {
 				r = r.append(protect(v[1], e[v[0]]))
@@ -380,12 +469,12 @@ func replace(tmpl Template, e []DNA) {
 // 4 => IICP
 // 0 => P
 // 5 => CICP
-func asnat(i int) DNA {
+func asnat(i int) string {
 	ret := ""
 	for {
 		if i == 0 {
 			ret += "P"
-			return DNA(ret)
+			return ret
 		}
 		if i%2 == 0 {
 			ret += "I"
@@ -396,7 +485,7 @@ func asnat(i int) DNA {
 	}
 }
 
-func protect(l int, d DNA) DNA {
+func protect(l int, d *DNA) *DNA {
 	for i := 0; i < l; i++ {
 		d = quote(d)
 	}
@@ -404,23 +493,23 @@ func protect(l int, d DNA) DNA {
 }
 
 // ICFPI => CFPICC
-func quote(d DNA) DNA {
-	ret := emptyDNA()
-	for i := 0; i < len(d); i++ {
+func quote(d *DNA) *DNA {
+	ret := ""
+	for i := 0; i < d.Len(); i++ {
 		switch d.get(i) {
 		case 'I':
-			ret = ret.append("C")
+			ret += "C"
 		case 'C':
-			ret = ret.append("F")
+			ret += "F"
 		case 'F':
-			ret = ret.append("P")
+			ret += "P"
 		case 'P':
-			ret = ret.append("IC")
+			ret += "IC"
 		default:
 			panic("invalid base")
 		}
 	}
-	return ret
+	return dnaFromString(ret)
 }
 
 func main() {

@@ -7,7 +7,7 @@ import (
 )
 
 func TestPatternCIIC(t *testing.T) {
-	dna = DNA("CIIC")
+	dna = dnaFromString("CIIC")
 	p, err := pattern()
 	assert.NoError(t, err)
 	assert.Len(t, p, 1)
@@ -15,7 +15,7 @@ func TestPatternCIIC(t *testing.T) {
 }
 
 func TestPatternIIPIPICPIICICIIF(t *testing.T) {
-	dna = DNA("IIPIPICPIICICIIF")
+	dna = dnaFromString("IIPIPICPIICICIIF")
 	p, err := pattern()
 	assert.NoError(t, err)
 	assert.Len(t, p, 4)
@@ -23,24 +23,24 @@ func TestPatternIIPIPICPIICICIIF(t *testing.T) {
 }
 
 func TestConstsCFICPII(t *testing.T) {
-	dna = DNA("CFICPII")
+	dna = dnaFromString("CFICPII")
 	c := consts()
 	assert.Len(t, c, 4)
 	assert.Equal(t, c, "ICPF")
-	assert.Equal(t, dna, DNA("II"))
+	assert.Equal(t, dna, dnaFromString("II"))
 }
 
 func TestFindPostfix(t *testing.T) {
-	n := findPostfix(DNA("ICFICFICPF"), "ICP")
+	n := findPostfix(dnaFromString("ICFICFICPF"), "ICP")
 	assert.Equal(t, 9, n)
 
-	n = findPostfix(DNA("ICFICFICPF"), "PF")
+	n = findPostfix(dnaFromString("ICFICFICPF"), "PF")
 	assert.Equal(t, 10, n)
 
-	n = findPostfix(DNA("ICFICFICPF"), "PFI")
+	n = findPostfix(dnaFromString("ICFICFICPF"), "PFI")
 	assert.Equal(t, -1, n)
 
-	n = findPostfix(DNA("ICFICFICPF"), "I")
+	n = findPostfix(dnaFromString("ICFICFICPF"), "I")
 	assert.Equal(t, 1, n)
 }
 
@@ -57,4 +57,9 @@ func TestAsNAt(t *testing.T) {
 
 	s = asnat(5)
 	assert.Equal(t, "CICP", string(s))
+}
+
+func TestRun(t *testing.T) {
+	err := do("")
+	assert.NoError(t, err)
 }
