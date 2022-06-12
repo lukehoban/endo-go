@@ -6,9 +6,10 @@ import (
 	"os"
 	"reflect"
 	"runtime/pprof"
+	"strings"
 )
 
-var log = false
+const log = false
 
 type DNA struct {
 	s     string
@@ -280,10 +281,8 @@ func do(prefix string) error {
 		if log {
 			fmt.Printf("\niteration %d\n", iteration)
 			fmt.Printf("dna = %s\n", dna)
-		} else if iteration%10000 == 0 {
+		} else if iteration%100000 == 0 {
 			fmt.Printf("iteration %d\n", iteration)
-		} else if iteration > 10000000 {
-			panic("done")
 		}
 
 		iter := dna.iterator()
@@ -312,9 +311,8 @@ func do(prefix string) error {
 }
 
 func pattern(iter *DNAIterator) (Pattern, error) {
-	var p Pattern
+	p := pat[:0]
 	lvl := 0
-
 	for {
 		switch iter.Next() {
 		case 'C':
@@ -409,7 +407,7 @@ func consts(iter *DNAIterator) string {
 }
 
 func template(iter *DNAIterator) (Template, error) {
-	var t Template
+	t := tmpl[:0]
 	for {
 		switch iter.Next() {
 		case 'C':
@@ -518,24 +516,24 @@ outer:
 
 func replace(tmpl Template, e []*DNA) {
 	var parts []*DNA
-	curpart := ""
+	var curpart strings.Builder
 	for _, t := range tmpl {
 		switch v := t.(type) {
 		case int32:
-			curpart += string(v)
+			curpart.WriteByte(byte(v))
 		case int:
 			x := 0
 			if v < len(e) {
 				x = e[v].Len()
 			}
-			curpart += asnat(x)
+			curpart.Write([]byte(asnat(x)))
 		case []int:
 			if v[0] < len(e) {
-				if len(curpart) > 0 {
-					parts = append(parts, dnaFromString(curpart))
+				if curpart.Len() > 0 {
+					parts = append(parts, dnaFromString(curpart.String()))
 				}
 				parts = append(parts, protect(v[1], e[v[0]]))
-				curpart = ""
+				curpart = strings.Builder{}
 			}
 		default:
 			panic(fmt.Sprintf("unexpected template element: %v", reflect.TypeOf(t)))
@@ -545,8 +543,8 @@ func replace(tmpl Template, e []*DNA) {
 	for _, part := range parts {
 		r = r.append(part)
 	}
-	if len(curpart) > 0 {
-		r = r.append(dnaFromString(curpart))
+	if curpart.Len() > 0 {
+		r = r.append(dnaFromString(curpart.String()))
 	}
 	dna = r.append(dna)
 }
@@ -555,16 +553,16 @@ func replace(tmpl Template, e []*DNA) {
 // 0 => P
 // 5 => CICP
 func asnat(i int) string {
-	ret := ""
+	var ret strings.Builder
 	for {
 		if i == 0 {
-			ret += "P"
-			return ret
+			ret.WriteByte('P')
+			return ret.String()
 		}
 		if i%2 == 0 {
-			ret += "I"
+			ret.WriteByte('I')
 		} else {
-			ret += "C"
+			ret.WriteByte('C')
 		}
 		i /= 2
 	}
@@ -579,22 +577,31 @@ func protect(l int, d *DNA) *DNA {
 
 // ICFPI => CFPICC
 func quote(d *DNA) *DNA {
-	ret := ""
+	var ret strings.Builder
 	for i := 0; i < d.Len(); i++ {
 		switch d.get(i) {
 		case 'I':
-			ret += "C"
+			ret.WriteByte('C')
 		case 'C':
-			ret += "F"
+			ret.WriteByte('F')
 		case 'F':
-			ret += "P"
+			ret.WriteByte('P')
 		case 'P':
-			ret += "IC"
+			ret.WriteByte('I')
+			ret.WriteByte('C')
 		default:
 			panic("invalid base")
 		}
 	}
-	return dnaFromString(ret)
+	return dnaFromString(ret.String())
+}
+
+var pat Pattern
+var tmpl Template
+
+func init() {
+	pat = make(Pattern, 0, 1024)
+	tmpl = make(Template, 0, 1024)
 }
 
 func main() {
