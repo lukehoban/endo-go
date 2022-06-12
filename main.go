@@ -31,13 +31,15 @@ func (d *DNA) get(i int) byte {
 	if i >= d.len {
 		return 0
 	}
-	if d.left == nil {
-		return d.s[i]
-	} else {
+	for {
+		if d.left == nil {
+			return d.s[i]
+		}
 		if i < d.left.len {
-			return d.left.get(i)
+			d = d.left
 		} else {
-			return d.right.get(i - d.left.len)
+			i -= d.left.len
+			d = d.right
 		}
 	}
 }
