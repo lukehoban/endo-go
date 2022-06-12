@@ -62,6 +62,12 @@ func (d *DNA) skip(i int) *DNA {
 }
 
 func (d1 *DNA) append(d2 *DNA) *DNA {
+	if d1.Len() == 0 {
+		return d2
+	}
+	if d2.Len() == 0 {
+		return d1
+	}
 	if d1.Len() < 100 && d2.left != nil && d2.left.left == nil && len(d2.left.s) < 100 {
 		return &DNA{
 			len:   d1.len + d2.len,
@@ -136,8 +142,82 @@ func (d *DNA) String() string {
 	return fmt.Sprintf("%s%s (%d bases)", snip.asString(), cont, d.Len())
 }
 
+type DNAIterator struct {
+	stack []*DNA
+	i     int
+	buf   []byte
+}
+
+func (iter *DNAIterator) Next() byte {
+	if len(iter.buf) > 0 {
+		ret := iter.buf[0]
+		iter.buf = iter.buf[1:]
+		return ret
+	}
+	return iter.next()
+}
+
+func (iter *DNAIterator) next() byte {
+	if len(iter.stack) == 0 {
+		return 0
+	}
+	cur := iter.stack[0]
+	ret := cur.get(iter.i)
+	iter.i++
+	if iter.i == cur.Len() {
+		iter.i = 0
+		iter.stack = iter.stack[1:]
+		if len(iter.stack) > 0 && iter.stack[0].left != nil {
+			newstack := dnaToStack(iter.stack[0])
+			iter.stack = append(newstack, iter.stack[1:]...)
+		}
+	}
+	return ret
+}
+
+func (iter *DNAIterator) Peek() byte {
+	b := iter.next()
+	iter.buf = append(iter.buf, b)
+	return b
+}
+
+func (iter *DNAIterator) Rest() *DNA {
+	ret := dnaFromString(string(iter.buf))
+	if len(iter.stack) == 0 {
+		return ret
+	}
+	ret = ret.append(iter.stack[0].skip(iter.i))
+	for i := 1; i < len(iter.stack); i++ {
+		ret = &DNA{
+			s:     "",
+			len:   ret.len + iter.stack[i].len,
+			left:  ret,
+			right: iter.stack[i],
+		}
+	}
+	return ret
+}
+
+func dnaToStack(d *DNA) []*DNA {
+	var stack []*DNA
+	for d.right != nil {
+		stack = append([]*DNA{d.right}, stack...)
+		d = d.left
+	}
+	stack = append([]*DNA{d}, stack...)
+	return stack
+}
+
+func (d *DNA) iterator() *DNAIterator {
+
+	return &DNAIterator{
+		stack: dnaToStack(d),
+		i:     0,
+	}
+}
+
 var dna *DNA
-var rna []*DNA
+var rna []string
 
 type Pattern []interface{}
 type Template []interface{}
@@ -206,7 +286,9 @@ func do(prefix string) error {
 			panic("done")
 		}
 
-		pat, err := pattern()
+		iter := dna.iterator()
+
+		pat, err := pattern(iter)
 		if err != nil {
 			return err
 		}
@@ -214,7 +296,7 @@ func do(prefix string) error {
 			fmt.Printf("pat = %s\n", pat)
 		}
 
-		tmpl, err := template()
+		tmpl, err := template(iter)
 		if err != nil {
 			return err
 		}
@@ -222,58 +304,56 @@ func do(prefix string) error {
 			fmt.Printf("tmpl = %s\n", tmpl)
 		}
 
+		dna = iter.Rest()
+
 		matchreplace(pat, tmpl)
 		iteration++
 	}
 }
 
-func pattern() (Pattern, error) {
+func pattern(iter *DNAIterator) (Pattern, error) {
 	var p Pattern
 	lvl := 0
 
 	for {
-		switch dna.get(0) {
+		switch iter.Next() {
 		case 'C':
-			dna = dna.skip(1)
 			p = append(p, 'I')
 		case 'F':
-			dna = dna.skip(1)
 			p = append(p, 'C')
 		case 'P':
-			dna = dna.skip(1)
 			p = append(p, 'F')
 		case 'I':
-			switch dna.get(1) {
+			switch iter.Next() {
 			case 'C':
-				dna = dna.skip(2)
 				p = append(p, 'P')
 			case 'P':
-				dna = dna.skip(2)
-				n, err := nat()
+				n, err := nat(iter)
 				if err != nil {
 					return p, err
 				}
 				p = append(p, n)
 			case 'F':
-				dna = dna.skip(3)
-				c := consts()
+				iter.Next()
+				c := consts(iter)
 				p = append(p, c)
 			case 'I':
-				switch dna.get(2) {
+				switch iter.Next() {
 				case 'P':
-					dna = dna.skip(3)
 					lvl++
 					p = append(p, true)
 				case 'C', 'F':
-					dna = dna.skip(3)
 					if lvl == 0 {
 						return p, nil
 					}
 					lvl--
 					p = append(p, false)
 				case 'I':
-					rna = append(rna, dna.substring(3, 10))
-					dna = dna.skip(10)
+					r := ""
+					for i := 0; i < 7; i++ {
+						r += fmt.Sprintf("%c", iter.Next())
+					}
+					rna = append(rna, r)
 				default:
 					return p, fmt.Errorf("end of file pat 1")
 				}
@@ -289,16 +369,15 @@ func pattern() (Pattern, error) {
 // CICP => 5
 // ICP =>  2
 // CIP =>  1
-func nat() (int, error) {
+func nat(iter *DNAIterator) (int, error) {
 	ret := 0
 	i := 0
 	for {
-		switch dna.get(i) {
+		switch iter.Next() {
 		case 'C':
 			ret += 1 << i
 		case 'I', 'F':
 		case 'P':
-			dna = dna.skip(i + 1)
 			return ret, nil
 		default:
 			return 0, fmt.Errorf("end of file nat")
@@ -308,11 +387,10 @@ func nat() (int, error) {
 }
 
 // CFICP => ICPF
-func consts() string {
+func consts(iter *DNAIterator) string {
 	str := ""
-	i := 0
 	for {
-		switch dna.get(i) {
+		switch iter.Peek() {
 		case 'C':
 			str += "I"
 		case 'F':
@@ -320,61 +398,56 @@ func consts() string {
 		case 'P':
 			str += "F"
 		case 'I':
-			i++
-			if dna.get(i) != 'C' {
-				dna = dna.skip(i - 1)
+			if iter.Peek() != 'C' {
 				return str
 			}
 			str += "P"
+			iter.Next()
 		}
-		i++
+		iter.Next()
 	}
 }
 
-func template() (Template, error) {
+func template(iter *DNAIterator) (Template, error) {
 	var t Template
 	for {
-		switch dna.get(0) {
+		switch iter.Next() {
 		case 'C':
-			dna = dna.skip(1)
 			t = append(t, 'I')
 		case 'F':
-			dna = dna.skip(1)
 			t = append(t, 'C')
 		case 'P':
-			dna = dna.skip(1)
 			t = append(t, 'F')
 		case 'I':
-			switch dna.get(1) {
+			switch iter.Next() {
 			case 'C':
-				dna = dna.skip(2)
 				t = append(t, 'P')
 			case 'F', 'P':
-				dna = dna.skip(2)
-				l, err := nat()
+				l, err := nat(iter)
 				if err != nil {
 					return t, err
 				}
-				n, err := nat()
+				n, err := nat(iter)
 				if err != nil {
 					return t, err
 				}
 				t = append(t, []int{n, l})
 			case 'I':
-				switch dna.get(2) {
+				switch iter.Next() {
 				case 'C', 'F':
-					dna = dna.skip(3)
 					return t, nil
 				case 'P':
-					dna = dna.skip(3)
-					n, err := nat()
+					n, err := nat(iter)
 					if err != nil {
 						return t, err
 					}
 					t = append(t, n)
 				case 'I':
-					rna = append(rna, dna.substring(3, 10))
-					dna = dna.skip(10)
+					r := ""
+					for i := 0; i < 7; i++ {
+						r += fmt.Sprintf("%c", iter.Next())
+					}
+					rna = append(rna, r)
 				default:
 					return t, fmt.Errorf("end of file")
 				}
@@ -444,24 +517,36 @@ outer:
 }
 
 func replace(tmpl Template, e []*DNA) {
-	r := emptyDNA()
+	var parts []*DNA
+	curpart := ""
 	for _, t := range tmpl {
 		switch v := t.(type) {
 		case int32:
-			r = r.append(dnaFromString(string(v)))
+			curpart += string(v)
 		case int:
 			x := 0
 			if v < len(e) {
 				x = e[v].Len()
 			}
-			r = r.append(dnaFromString(asnat(x)))
+			curpart += asnat(x)
 		case []int:
 			if v[0] < len(e) {
-				r = r.append(protect(v[1], e[v[0]]))
+				if len(curpart) > 0 {
+					parts = append(parts, dnaFromString(curpart))
+				}
+				parts = append(parts, protect(v[1], e[v[0]]))
+				curpart = ""
 			}
 		default:
 			panic(fmt.Sprintf("unexpected template element: %v", reflect.TypeOf(t)))
 		}
+	}
+	r := emptyDNA()
+	for _, part := range parts {
+		r = r.append(part)
+	}
+	if len(curpart) > 0 {
+		r = r.append(dnaFromString(curpart))
 	}
 	dna = r.append(dna)
 }

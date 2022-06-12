@@ -8,7 +8,7 @@ import (
 
 func TestPatternCIIC(t *testing.T) {
 	dna = dnaFromString("CIIC")
-	p, err := pattern()
+	p, err := pattern(dna.iterator())
 	assert.NoError(t, err)
 	assert.Len(t, p, 1)
 	assert.ElementsMatch(t, p, []interface{}{'I'})
@@ -16,7 +16,7 @@ func TestPatternCIIC(t *testing.T) {
 
 func TestPatternIIPIPICPIICICIIF(t *testing.T) {
 	dna = dnaFromString("IIPIPICPIICICIIF")
-	p, err := pattern()
+	p, err := pattern(dna.iterator())
 	assert.NoError(t, err)
 	assert.Len(t, p, 4)
 	assert.ElementsMatch(t, p, []interface{}{true, 2, false, 'P'})
@@ -24,10 +24,11 @@ func TestPatternIIPIPICPIICICIIF(t *testing.T) {
 
 func TestConstsCFICPII(t *testing.T) {
 	dna = dnaFromString("CFICPII")
-	c := consts()
+	iter := dna.iterator()
+	c := consts(iter)
 	assert.Len(t, c, 4)
 	assert.Equal(t, c, "ICPF")
-	assert.Equal(t, dna, dnaFromString("II"))
+	assert.Equal(t, dnaFromString("II"), iter.Rest())
 }
 
 func TestFindPostfix(t *testing.T) {
@@ -62,4 +63,36 @@ func TestAsNAt(t *testing.T) {
 func TestRun(t *testing.T) {
 	err := do("")
 	assert.NoError(t, err)
+}
+
+func TestIterator(t *testing.T) {
+	d := &DNA{
+		s:   "",
+		len: 5,
+		left: &DNA{
+			s:     "",
+			len:   2,
+			left:  &DNA{s: "a", len: 1},
+			right: &DNA{s: "b", len: 1},
+		},
+		right: &DNA{
+			s:     "",
+			len:   3,
+			left:  &DNA{s: "c", len: 1},
+			right: &DNA{s: "de", len: 2},
+		},
+	}
+
+	iter := d.iterator()
+	assert.Equal(t, byte('a'), iter.Next())
+	assert.Equal(t, "bcde", iter.Rest().asString())
+	assert.Equal(t, byte('b'), iter.Next())
+	assert.Equal(t, "cde", iter.Rest().asString())
+	assert.Equal(t, byte('c'), iter.Next())
+	assert.Equal(t, "de", iter.Rest().asString())
+	assert.Equal(t, byte('d'), iter.Next())
+	assert.Equal(t, "e", iter.Rest().asString())
+	assert.Equal(t, byte('e'), iter.Next())
+	assert.Equal(t, "", iter.Rest().asString())
+	assert.Equal(t, byte(0), iter.Next())
 }
