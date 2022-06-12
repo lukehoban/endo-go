@@ -22,6 +22,9 @@ func dnaFromString(s string) *DNA {
 	if s == "" {
 		return emptyDNA()
 	}
+	if len(s) < 4 {
+		return dnaCache[s]
+	}
 	return &DNA{
 		s:     s,
 		len:   len(s),
@@ -612,10 +615,33 @@ func quote(d *DNA) *DNA {
 
 var pat Pattern
 var tmpl Template
+var dnaCache map[string]*DNA = map[string]*DNA{}
 
 func init() {
 	pat = make(Pattern, 0, 1024)
 	tmpl = make(Template, 0, 1024)
+	chars := []byte{'I', 'C', 'F', 'P'}
+	for _, x0 := range chars {
+		s := string([]byte{x0})
+		dnaCache[s] = &DNA{
+			s:   s,
+			len: 1,
+		}
+		for _, x1 := range chars {
+			s := string([]byte{x0, x1})
+			dnaCache[s] = &DNA{
+				s:   s,
+				len: 2,
+			}
+			for _, x2 := range chars {
+				s := string([]byte{x0, x1, x2})
+				dnaCache[s] = &DNA{
+					s:   s,
+					len: 3,
+				}
+			}
+		}
+	}
 }
 
 func main() {
