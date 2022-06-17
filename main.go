@@ -2,6 +2,9 @@ package main
 
 import (
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -865,7 +868,23 @@ func build() (Bitmap, error) {
 				bitmaps = bitmaps[1:]
 			}
 		case "PFFICCF":
-			return bitmaps[0], fmt.Errorf("clip ()")
+			if len(bitmaps) >= 2 {
+				for y := Coord(0); y < 600; y++ {
+					for x := Coord(0); x < 600; x++ {
+						p0 := bitmaps[0][x][y]
+						p1 := bitmaps[1][x][y]
+						bitmaps[1][x][y] = Pixel{
+							RGB: RGB{
+								(p1.RGB.R * Component(p0.T)) / 255,
+								(p1.RGB.G * Component(p0.T)) / 255,
+								(p1.RGB.B * Component(p0.T)) / 255,
+							},
+							T: (p1.T * p0.T) / 255,
+						}
+					}
+				}
+				bitmaps = bitmaps[1:]
+			}
 		default:
 			// Do nothing
 		}
@@ -898,24 +917,24 @@ func main() {
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	}
-	var builder strings.Builder
+	img := image.NewRGBA(image.Rect(0, 0, 600, 600))
 	for j := 0; j < 600; j++ {
 		for i := 0; i < 600; i++ {
 			pixel := bitmap[i][j]
-			if pixel.RGB.R == 0 && pixel.RGB.G == 0 && pixel.RGB.B == 0 {
-				builder.WriteByte(' ')
-			} else {
-				if pixel.RGB.R > pixel.RGB.G && pixel.RGB.R > pixel.RGB.B {
-					builder.WriteByte('*')
-				} else if pixel.RGB.G > pixel.RGB.B {
-					builder.WriteByte('.')
-				} else {
-					builder.WriteByte('#')
-				}
-			}
+			img.Set(i, j, color.RGBA{
+				R: uint8(pixel.RGB.R),
+				G: uint8(pixel.RGB.G),
+				B: uint8(pixel.RGB.B),
+				A: 255,
+			})
 		}
-		builder.WriteByte('\n')
 	}
-	fmt.Printf("%s", builder.String())
+
+	f, err := os.Create(fmt.Sprintf("images/img%s.png", prefix))
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	png.Encode(f, img)
 
 }
