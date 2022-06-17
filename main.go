@@ -644,6 +644,235 @@ func init() {
 	}
 }
 
+type Coord int
+type Pos struct {
+	X, Y Coord
+}
+type Component int
+type RGB struct {
+	R, G, B Component
+}
+type Transparency Component
+type Pixel struct {
+	RGB RGB
+	T   Transparency
+}
+type Bitmap [600][600]Pixel
+type Bucket []interface{}
+type Dir string
+
+const (
+	N Dir = "N"
+	E Dir = "E"
+	S Dir = "S"
+	W Dir = "W"
+)
+
+var (
+	Black       RGB          = RGB{0, 0, 0}
+	Red         RGB          = RGB{255, 0, 0}
+	Green       RGB          = RGB{0, 255, 0}
+	Yellow      RGB          = RGB{255, 255, 0}
+	Blue        RGB          = RGB{0, 0, 255}
+	Magenta     RGB          = RGB{255, 0, 255}
+	Cyan        RGB          = RGB{0, 255, 255}
+	White       RGB          = RGB{255, 255, 255}
+	Transparent Transparency = 0
+	Opaque      Transparency = 255
+)
+
+func build() (Bitmap, error) {
+	var bucket Bucket
+	dir := E
+	pos := Pos{0, 0}
+	mark := Pos{0, 0}
+	bitmaps := []Bitmap{Bitmap{}}
+
+	currentPixel := func() Pixel {
+		var numrgb, rc, gc, bc Component
+		var numt, ac Transparency
+		for i := range bucket {
+			switch v := bucket[i].(type) {
+			case RGB:
+				numrgb++
+				rc += v.R
+				gc += v.G
+				bc += v.B
+			case Transparency:
+				numt++
+				ac += v
+			default:
+				panic("invalid type in bucket")
+			}
+		}
+		if numrgb > 0 {
+			rc /= numrgb
+			gc /= numrgb
+			bc /= numrgb
+		}
+		if numt > 0 {
+			ac /= numt
+		} else {
+			ac = 255
+		}
+		return Pixel{
+			RGB: RGB{(rc * Component(ac)) / 255, (gc * Component(ac)) / 255, (bc * Component(ac)) / 255},
+			T:   ac,
+		}
+	}
+
+	getPixel := func(p Pos) Pixel {
+		return bitmaps[0][p.X][p.Y]
+	}
+
+	setPixel := func(p Pos) {
+		bitmaps[0][p.X][p.Y] = currentPixel()
+	}
+
+	for _, r := range rna {
+		switch r {
+		case "PIPIIIC":
+			bucket = append(bucket, Black)
+		case "PIPIIIP":
+			bucket = append(bucket, Red)
+		case "PIPIICC":
+			bucket = append(bucket, Green)
+		case "PIPIICF":
+			bucket = append(bucket, Yellow)
+		case "PIPIICP":
+			bucket = append(bucket, Blue)
+		case "PIPIIFC":
+			bucket = append(bucket, Magenta)
+		case "PIPIIFF":
+			bucket = append(bucket, Cyan)
+		case "PIPIIPC":
+			bucket = append(bucket, White)
+		case "PIPIIPF":
+			bucket = append(bucket, Transparent)
+		case "PIPIIPP":
+			bucket = append(bucket, Opaque)
+		case "PIIPICP":
+			bucket = nil
+		case "PIIIIIP":
+			switch dir {
+			case N:
+				pos.Y = (pos.Y + 599) % 600
+			case E:
+				pos.X = (pos.X + 1) % 600
+			case S:
+				pos.Y = (pos.Y + 1) % 600
+			case W:
+				pos.X = (pos.X + 599) % 600
+			}
+		case "PCCCCCP":
+			switch dir {
+			case N:
+				dir = W
+			case E:
+				dir = N
+			case S:
+				dir = E
+			case W:
+				dir = S
+			}
+		case "PFFFFFP":
+			switch dir {
+			case N:
+				dir = E
+			case E:
+				dir = S
+			case S:
+				dir = W
+			case W:
+				dir = N
+			}
+		case "PCCIFFP":
+			mark = pos
+		case "PFFICCP":
+			p0 := pos
+			p1 := mark
+			deltax := p1.X - p0.X
+			deltay := p1.Y - p0.Y
+			d := deltax
+			if -deltax > d {
+				d = -deltax
+			}
+			if deltay > d {
+				d = deltay
+			}
+			if -deltay > d {
+				d = -deltay
+			}
+			var c Coord = 0
+			if deltax*deltay <= 0 {
+				c = 1
+			}
+			x := p0.X*d + (d-c)/2
+			y := p0.Y*d + (d-c)/2
+			for i := Coord(0); i < d; i++ {
+				setPixel(Pos{x / d, y / d})
+				x += deltax
+				y += deltay
+			}
+			setPixel(p1)
+		case "PIIPIIP":
+			fill := func(p Pos, initial Pixel) {
+				toFill := []Pos{p}
+				for len(toFill) > 0 {
+					p = toFill[0]
+					toFill = toFill[1:]
+					if getPixel(p) == initial {
+						setPixel(p)
+						if p.X > 0 {
+							toFill = append(toFill, Pos{p.X - 1, p.Y})
+						}
+						if p.X < 599 {
+							toFill = append(toFill, Pos{p.X + 1, p.Y})
+						}
+						if p.Y > 0 {
+							toFill = append(toFill, Pos{p.X, p.Y - 1})
+						}
+						if p.Y < 599 {
+							toFill = append(toFill, Pos{p.X, p.Y + 1})
+						}
+					}
+				}
+			}
+			old := getPixel(pos)
+			if currentPixel() != old {
+				fill(pos, old)
+			}
+		case "PCCPFFP":
+			if len(bitmaps) < 10 {
+				bitmaps = append([]Bitmap{Bitmap{}}, bitmaps...)
+			}
+		case "PFFPCCP":
+			if len(bitmaps) >= 2 {
+				for y := Coord(0); y < 600; y++ {
+					for x := Coord(0); x < 600; x++ {
+						p0 := bitmaps[0][x][y]
+						p1 := bitmaps[1][x][y]
+						bitmaps[1][x][y] = Pixel{
+							RGB: RGB{
+								p0.RGB.R + ((p1.RGB.R * (255 - Component(p0.T))) / 255),
+								p0.RGB.G + ((p1.RGB.G * (255 - Component(p0.T))) / 255),
+								p0.RGB.B + ((p1.RGB.B * (255 - Component(p0.T))) / 255),
+							},
+							T: p0.T + ((p1.T * (255 - p0.T)) / 255),
+						}
+					}
+				}
+				bitmaps = bitmaps[1:]
+			}
+		case "PFFICCF":
+			return bitmaps[0], fmt.Errorf("clip ()")
+		default:
+			// Do nothing
+		}
+	}
+	return bitmaps[0], nil
+}
+
 func main() {
 
 	if true {
@@ -664,4 +893,29 @@ func main() {
 		fmt.Printf("#rna = %d\n", len(rna))
 		fmt.Printf("%v\n", err)
 	}
+
+	bitmap, err := build()
+	if err != nil {
+		fmt.Printf("%v\n", err)
+	}
+	var builder strings.Builder
+	for j := 0; j < 600; j++ {
+		for i := 0; i < 600; i++ {
+			pixel := bitmap[i][j]
+			if pixel.RGB.R == 0 && pixel.RGB.G == 0 && pixel.RGB.B == 0 {
+				builder.WriteByte(' ')
+			} else {
+				if pixel.RGB.R > pixel.RGB.G && pixel.RGB.R > pixel.RGB.B {
+					builder.WriteByte('*')
+				} else if pixel.RGB.G > pixel.RGB.B {
+					builder.WriteByte('.')
+				} else {
+					builder.WriteByte('#')
+				}
+			}
+		}
+		builder.WriteByte('\n')
+	}
+	fmt.Printf("%s", builder.String())
+
 }
